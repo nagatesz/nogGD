@@ -2,5 +2,5 @@
 !vercel.json
 !public
 !public/**
-# exclude uncompressed backup
-public/**/*.uncompressed
+!api
+!api/**
