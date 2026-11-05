@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101522">
+  <title>nogGD — Geometry Dash in your browser</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    #dl-progress-wrap {
+      display: none;
+      position: fixed;
+      bottom: 48px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(480px, 90vw);
+      background: rgba(10,13,30,0.92);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 14px 18px;
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+    #dl-label {
+      font-size: 12px;
+      color: #8b9abf;
+      margin-bottom: 8px;
+    }
+    #dl-track {
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      height: 6px;
+      overflow: hidden;
+    }
+    #dl-progress {
+      height: 100%;
+      background: linear-gradient(90deg, #5b8fff, #a855f7);
+      border-radius: 999px;
+      width: 0%;
+      transition: width 0.2s ease;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="nogGD home"><span class="brand-mark">n</span><span>nogGD</span></a>
+    <div class="controls">
+      <label class="button primary" for="resources">Load game resources</label>
+      <input id="resources" type="file" webkitdirectory directory multiple hidden>
+      <label class="button" for="levels">Import custom levels</label>
+      <input id="levels" type="file" accept=".dat,.gmd,.txt,.xml,application/xml,text/plain" multiple hidden>
+      <button class="button" id="fullscreen" type="button">Fullscreen</button>
+    </div>
+  </header>
+  <main>
+    <section class="game-frame" aria-label="OpenGD game">
+      <iframe id="game" title="nogGD game" src="/game/OpenGD.html" allow="fullscreen; autoplay" allowfullscreen></iframe>
+      <div class="welcome" id="welcome">
+        <div class="welcome-card">
+          <div class="eyebrow">Browser edition</div>
+          <h1>Loading OpenGD…<br><span>Downloading resources</span></h1>
+          <p>Fetching game resources automatically — this only happens once. Your browser will cache them locally.</p>
+          <div class="privacy"><span class="privacy-dot"></span> Resources are saved in this browser. Nothing is uploaded.</div>
+        </div>
+      </div>
+    </section>
+    <footer class="statusbar">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status">Loading game runtime…</span>
+      <span class="status-note">Built on OpenGD Remastered · Browser saves stay on this device</span>
+    </footer>
+  </main>
+
+  <div id="dl-progress-wrap">
+    <div id="dl-label">Downloading OpenGD resources (first load only)…</div>
+    <div id="dl-track"><div id="dl-progress"></div></div>
+  </div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

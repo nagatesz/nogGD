@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Emscripten-Generated Code</title>
+    <style>
+      .emscripten { padding-right: 0; margin-left: auto; margin-right: auto; display: block; }
+      textarea.emscripten { font-family: monospace; display: inline; width: 100%}
+      div.emscripten { margin-left: 0px; text-align: center; }
+      div.emscripten_border { margin-left: 0px; border: 1px solid black; }
+      /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
+      canvas.emscripten { border: 0px none; background-color: black; }
+
+      @-webkit-keyframes rotation {
+        from {-webkit-transform: rotate(0deg);}
+        to {-webkit-transform: rotate(360deg);}
+      }
+      @-moz-keyframes rotation {
+        from {-moz-transform: rotate(0deg);}
+        to {-moz-transform: rotate(360deg);}
+      }
+      @-o-keyframes rotation {
+        from {-o-transform: rotate(0deg);}
+        to {-o-transform: rotate(360deg);}
+      }
+      @keyframes rotation {
+        from {transform: rotate(0deg);}
+        to {transform: rotate(360deg);}
+      }
+
+    </style>
+  </head>
+  <body>
+    <div class="emscripten_border">
+      <div class="emscripten" id="status">Downloading...</div>
+      <div class="emscripten">
+        <progress value="0" max="100" id="progress" hidden=1></progress>
+      </div>
+      <canvas class="emscripten" id="canvas"  oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+    </div>
+    <div class="emscripten">
+      <input type="checkbox" id="resize">Resize canvas
+      <input type="checkbox" id="pointerLock" checked>Lock/hide mouse pointer
+      &nbsp;&nbsp;&nbsp;
+      <input type="button" value="Fullscreen" onclick="Module.requestFullscreen(document.getElementById('pointerLock').checked,
+                                                                                document.getElementById('resize').checked)">
+      |
+      <input type="button" value="Pause" onclick="Module.ccall('axmol_dev_pause')">
+      <input type="button" value="Resume" onclick="Module.ccall('axmol_dev_resume')">
+      <input type="button" value="Step" onclick="Module.ccall('axmol_dev_step')">
+    </div>
+
+    <div class="emscripten">
+      <textarea class="emscripten" id="output" rows="8"></textarea>
+    </div>
+
+    <script type='text/javascript'>
+      var statusElement = document.getElementById('status');
+      var progressElement = document.getElementById('progress');
+
+      var hierarchyElement = document.getElementById('hierarchy');
+      var nodeProperties = [];
+      for(var i = 0; i < 20; i++) {
+        nodeProperties[i] = document.getElementById('nodeProperty' + i);
+      }
+      var Module = {
+        preInit: [],
+        preRun: [],
+        postRun: [],
+        print: (function() {
+          // #region axmol-spec
+          var escapeDeep = 0;
+          var stashedEscape = null;
+          // #endregion axmol-spec
+          var element = document.getElementById('output');
+          if (element) element.value = ''; // clear browser cache
+          return function(text) {
+            if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+            // These replacements are necessary if you render to raw HTML
+            //text = text.replace(/&/g, "&amp;");
+            //text = text.replace(/</g, "&lt;");
+            //text = text.replace(/>/g, "&gt;");
+            //text = text.replace('\n', '<br>', 'g');
+
+            // #region axmol-spec
+            var curEscape = null;
+            var escapeList = text.match(/\x1b\[(\d{2})?m/g);
+            if(escapeList != null) {
+              for(var i = 0; i < escapeList.length; ++i) {
+                var escape = escapeList[i];
+                if (escape !== "\x1b[m") {
+                  curEscape = escape;
+                  ++escapeDeep;
+                } else {
+                  --escapeDeep;
+                }
+              }
+            }
+            if (escapeDeep > 0) { // still in escape
+              if (stashedEscape != null) { // check stashedEscape
+                if(text.startsWith("\x1b[m")) {
+                  text = text.substring(3);
+                }
+                if (!text.startsWith("\x1b[")) { // due to end color removed, it's must start color or not.
+                  text = stashedEscape + text;
+                }
+              }
+
+              if(curEscape) {
+                // store this text last escape
+                stashedEscape = curEscape;
+              }
+            } else {
+              stashedEscape = null;
+            }
+            /* trim end: (\n)?\x1b[m */
+            if(text.endsWith("\n\x1b[m")) {
+              text = text.substring(0, text.length - 4);
+            }
+            else if(text.endsWith("\x1b[m")) {
+              text = text.substring(0, text.length - 3);
+            }
+            // #endregion axmol-spec
+
+            console.log(text);
+            if (element) {
+              element.value += text.replace(/\x1b\[(\d{2})?m/g, '') + "\n"; // axmol-mod: strip ansi color
+              element.scrollTop = element.scrollHeight; // focus on bottom
+            }
+          };
+        })(),
+        printErr: function(text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          console.error(text);
+        },
+        canvas: (function() {
+          var canvas = document.getElementById('canvas');
+
+          // As a default initial behavior, pop up an alert when webgl context is lost. To make your
+          // application robust, you may want to override this behavior before shipping!
+          // See http://www.khronos.org/registry/webgl/specs/latest/1.0/#5.15.2
+          canvas.addEventListener("webglcontextlost", function(e) { Module.ccall('axmol_webglcontextlost'); alert('WebGL context lost. You will need to reload the page.'); e.preventDefault(); }, false);
+          canvas.addEventListener("webglcontextrestored", function(e) { Module.ccall('axmol_webglcontextrestored'); e.preventDefault(); }, false);
+
+          document.addEventListener("visibilitychange", () => { Module.ccall('axmol_hdoc_visibilitychange', document.hidden); });
+
+          return canvas;
+        })(),
+        setStatus: function(text) {
+          if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+          if (text === Module.setStatus.last.text) return;
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          var now = Date.now();
+          if (m && now - Module.setStatus.last.time < 30) return; // if this is a progress update, skip it if too soon
+          Module.setStatus.last.time = now;
+          Module.setStatus.last.text = text;
+          if (m) {
+            text = m[1];
+            progressElement.value = parseInt(m[2])*100;
+            progressElement.max = parseInt(m[4])*100;
+            progressElement.hidden = false;
+          } else {
+            progressElement.value = null;
+            progressElement.max = null;
+            progressElement.hidden = true;
+          }
+          statusElement.innerHTML = text;
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        }
+      };
+      Module.setStatus('Downloading...');
+      window.onerror = function() {
+        Module.setStatus('Exception thrown, see JavaScript console');
+        Module.setStatus = function(text) {
+          if (text) Module.printErr('[post-exception status] ' + text);
+        };
+      };
+    </script>
+    <script type='text/javascript'>
+      Module.preRun.push(function() {
+        addRunDependency('sync_writable_path')
+        FS.mkdir('/axmolPersistPath')
+        FS.mount(IDBFS, {}, '/axmolPersistPath')
+        FS.syncfs(true, function (err) {
+          if (err) {
+            throw err
+          }
+          removeRunDependency('sync_writable_path')
+        })
+        // #region axmol-spec, enable output as-is to console without split by \n
+        TTY.stream_ops.write = function(stream, buffer, offset, length, pos) {
+          var tty = stream.tty;
+          if (!tty || !tty.ops.put_char) {
+            throw new FS.ErrnoError(60);
+          }
+          try {
+            for (var i = 0; i < length; i++) {
+              var val = buffer[offset+i];
+              if (val === null) {
+                continue;
+              } else {
+                if (val != 0) tty.output.push(val); // val == 0 would cut text output off in the middle.
+              }
+            }
+          } catch (e) {
+            throw new FS.ErrnoError(29);
+          }
+          out(UTF8ArrayToString(tty.output, 0));
+          tty.output = [];
+          if (length) {
+            stream.node.timestamp = Date.now();
+          }
+          return i;
+        }
+        //  #endregion axmol-spec
+      })
+    </script>
+    <script async type="text/javascript" src="OpenGD.js"></script>
+    <script defer type="text/javascript" src="bridge.js"></script>
+  </body>
+</html>

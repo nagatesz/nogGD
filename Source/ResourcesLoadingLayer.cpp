@@ -1,0 +1,318 @@
+/*************************************************************************
+    OpenGD - Open source Geometry Dash.
+    Copyright (C) 2023  OpenGD Team
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License    
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*************************************************************************/
+
+#include "GameManager.h"
+#include "ResourcesLoadingLayer.h"
+#include "LoadingLayer.h"
+
+#include <2d/Scene.h>
+#include <2d/Label.h>
+#include <2d/ActionInterval.h>
+#include <2d/ActionInstant.h>
+#include <platform/FileUtils.h>
+#include <base/Director.h>
+#include "GameToolbox/log.h"
+
+USING_NS_AX;
+
+namespace
+{
+bool resourcesPresentAtPath(FileUtils* fu, const std::string& resourcesPath)
+{
+	const std::string iconsPath = resourcesPath + "/icons";
+	return fu->isFileExist(resourcesPath + "/game_bg_01_001-hd.png")
+		&& fu->isFileExist(resourcesPath + "/GJ_LaunchSheet-hd.png")
+		&& (fu->isFileExist(resourcesPath + "/GJ_GameSheet03-uhd.png")
+			|| fu->isFileExist(resourcesPath + "/GJ_GameSheet03-hd.png"))
+		&& fu->isFileExist(iconsPath + "/player_01-hd.png")
+		&& fu->isDirectoryExist(iconsPath);
+}
+
+bool resourcesPresentOnSearchPath(FileUtils* fu)
+{
+	return fu->isFileExist("game_bg_01_001-hd.png")
+		&& fu->isFileExist("GJ_LaunchSheet-hd.png")
+		&& (fu->isFileExist("GJ_GameSheet03-uhd.png") || fu->isFileExist("GJ_GameSheet03-hd.png"))
+		&& fu->isFileExist("player_01-hd.png");
+}
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+#include <windows.h>
+std::string getExeDirectoryWindows()
+{
+	wchar_t path[MAX_PATH] = {0};
+	if (GetModuleFileNameW(nullptr, path, MAX_PATH) == 0)
+		return {};
+
+	std::wstring wpath(path);
+	const auto slash = wpath.find_last_of(L"\\/");
+	if (slash == std::wstring::npos)
+		return {};
+
+	return {wpath.begin(), wpath.begin() + static_cast<std::ptrdiff_t>(slash)};
+}
+#endif
+}
+
+ResourcesLoadingLayer* ResourcesLoadingLayer::create() {
+	ResourcesLoadingLayer* pRet = new ResourcesLoadingLayer();
+	if (pRet->init()) {
+		pRet->autorelease();
+		return pRet;
+	} else {
+		delete pRet;
+		pRet = nullptr;
+		return nullptr;
+	}
+}
+
+Scene* ResourcesLoadingLayer::scene()
+{
+	auto scene = ax::Scene::create();
+	scene->addChild(ResourcesLoadingLayer::create());
+	return scene;
+}
+
+void ResourcesLoadingLayer::loadLoadingLayer()
+{
+	this->runAction(Sequence::create(DelayTime::create(0), CallFunc::create([]() {
+		Director::getInstance()->replaceScene(LoadingLayer::scene()); 
+	}), nullptr));
+}
+
+bool ResourcesLoadingLayer::tryLoadFromResourcesPath(const std::string& resourcesPath, bool persist)
+{
+	if (!resourcesPresentAtPath(_fu, resourcesPath))
+		return false;
+
+	_fu->addSearchPath(resourcesPath, true);
+	_fu->addSearchPath(resourcesPath + "/icons", true);
+
+	if (persist)
+	{
+		_gm->set<std::string>("resources_path", resourcesPath);
+		_gm->save();
+	}
+
+	loadLoadingLayer();
+	return true;
+}
+
+bool ResourcesLoadingLayer::init()
+{
+	_fu = FileUtils::getInstance();
+
+	for (std::string_view a : _fu->getSearchPaths())
+	{
+		GameToolbox::log("search path: {}", a);
+	}
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+	const std::string exeDirEarly = getExeDirectoryWindows();
+	if (!exeDirEarly.empty())
+	{
+		if (_fu->isDirectoryExist(exeDirEarly + "\\Content"))
+			_fu->addSearchPath(exeDirEarly + "\\Content", false);
+		_fu->addSearchPath(exeDirEarly, false);
+	}
+#endif
+
+	if (resourcesPresentOnSearchPath(_fu))
+	{
+		loadLoadingLayer();
+		return true;
+	}
+
+	_gm = GameManager::getInstance();
+	_dir = Director::getInstance();
+	_writablePath = _fu->getWritablePath();
+
+	auto winSize = _dir->getWinSize();
+	_posMiddle = { winSize.width / 2, winSize.height / 2 };
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+	const std::string exeDir = getExeDirectoryWindows();
+	if (!exeDir.empty())
+	{
+		if (tryLoadFromResourcesPath(exeDir + "\\Resources", true))
+			return true;
+	}
+#endif
+
+	if(auto path = _gm->get<std::string>("resources_path"); !path.empty())
+	{
+		if (tryLoadFromResourcesPath(path, false))
+			return true;
+	}
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+	static const char* kFallbackResourcePaths[] = {
+		"D:\\GeometryDash 2.2081\\Resources",
+		"D:\\GeometryDashGeode\\Resources",
+		"D:\\Geometry_Dash_v2.2074\\Resources",
+		"D:\\GDPS\\Resources",
+	};
+
+	for (const char* fallbackPath : kFallbackResourcePaths)
+	{
+		if (tryLoadFromResourcesPath(fallbackPath, true))
+			return true;
+	}
+
+	handleWindows();
+#endif
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_MAC)
+	handleMac();
+#endif
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_LINUX)
+	handleLinux();
+#endif
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WASM)
+	auto label = Label::create();
+	label->setSystemFontSize(18);
+	label->setString("Select your Geometry Dash Resources folder\nusing the nogGD controls above.\nYour files stay in this browser.");
+	label->setPosition(_posMiddle);
+	addChild(label);
+#endif
+	return true;
+}
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WASM)
+extern "C" void opengd_web_resources_ready()
+{
+	const std::string resourcesPath = "/axmolPersistPath/GeometryDash/Resources";
+	auto* fu = FileUtils::getInstance();
+	if (!resourcesPresentAtPath(fu, resourcesPath))
+		return;
+
+	fu->addSearchPath(resourcesPath, true);
+	fu->addSearchPath(resourcesPath + "/icons", true);
+	if (auto* gm = GameManager::getInstance())
+	{
+		gm->set<std::string>("resources_path", resourcesPath);
+		gm->save();
+	}
+	Director::getInstance()->replaceScene(LoadingLayer::scene());
+}
+#endif
+
+#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+
+#include <windows.h>
+#include <stdio.h>
+#include <tchar.h>
+#include <psapi.h>
+
+
+void ResourcesLoadingLayer::handleWindows()
+{
+	auto label = Label::create();
+	label->setString("Geometry Dash Resources not found!\n Waiting for GeometryDash.exe");
+	label->setSystemFontSize(20);
+	label->setPosition(_posMiddle);
+	addChild(label);
+
+	_gdProcessAction = RepeatForever::create(Sequence::create(DelayTime::create(0.6), CallFunc::create([=]() {
+		static int nPoints = -1;
+		++nPoints;
+		if (nPoints > 3)
+			nPoints = 0;
+
+		label->setString(fmt::format("Geometry Dash Resources not found!\n Waiting for GeometryDash.exe{}", nPoints == 1 ? "." : nPoints == 2 ? ".." : nPoints == 3 ? "..." : ""));
+
+		if (std::string exepath = ResourcesLoadingLayer::getRunningGDPathWindows(); !exepath.empty())
+		{
+			if (isWindowsGDPathValid(exepath))
+			{
+				exepath.erase(exepath.find_last_of('\\'));
+				std::string resourcesPath = fmt::format("{}\\Resources", exepath);
+				tryLoadFromResourcesPath(resourcesPath, true);
+			}
+			else
+			{
+				label->setString("Invalid GeometryDash.exe path found...");
+				nPoints = 0;
+			}
+		}
+	}), nullptr));
+
+	this->runAction(_gdProcessAction);
+}
+
+bool ResourcesLoadingLayer::isWindowsGDPathValid(std::string exepath)
+{
+	exepath.erase(exepath.find_last_of('\\'));
+
+	if (!_fu->isDirectoryExist(fmt::format("{}\\Resources", exepath))) return false;
+	if (!_fu->isDirectoryExist(fmt::format("{}\\Resources\\icons", exepath))) return false;
+	if (!_fu->isFileExist(fmt::format("{}\\libcocos2d.dll", exepath))) return false;
+	if (!_fu->isFileExist(fmt::format("{}\\libcurl.dll", exepath))) return false;
+
+	return resourcesPresentAtPath(_fu, fmt::format("{}\\Resources", exepath));
+}
+
+
+std::string ResourcesLoadingLayer::getRunningGDPathWindows()
+{
+	DWORD aProcesses[1024], cbNeeded, cProcesses;
+	if (!EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded))
+	{
+		return "";
+	}
+
+	cProcesses = cbNeeded / sizeof(DWORD);
+
+	for (unsigned int i = 0; i < cProcesses; i++)
+	{
+		if (DWORD processID = aProcesses[i]; processID != 0)
+		{
+			HANDLE processHandle = NULL;
+			TCHAR filename[MAX_PATH];
+			processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processID);
+			if (processHandle != NULL)
+			{
+				if (GetModuleFileNameEx(processHandle, NULL, filename, MAX_PATH) != 0)
+				{
+					std::wstring str(filename);
+					if (str.find(L"GeometryDash.exe") != std::string::npos)
+					{
+						TerminateProcess(processHandle, 1); //doesnt seem to work?
+						CloseHandle(processHandle);
+						return { str.begin(), str.end() };
+					}
+				}
+				CloseHandle(processHandle);
+			}
+		}
+	}
+	return "";
+}
+
+#endif //#if (AX_TARGET_PLATFORM == AX_PLATFORM_WIN32)
+
+
+//#if (AX_TARGET_PLATFORM == AX_PLATFORM_MAC)
+void ResourcesLoadingLayer::handleMac() {}
+//#endif
+
+//#if (AX_TARGET_PLATFORM == AX_PLATFORM_LINUX)
+void ResourcesLoadingLayer::handleLinux() {}
+//#endif

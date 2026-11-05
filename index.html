@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101522">
+  <title>nogGD — Geometry Dash in your browser</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="nogGD home"><span class="brand-mark">n</span><span>nogGD</span></a>
+    <div class="controls">
+      <label class="button primary" for="resources">Load game resources</label>
+      <input id="resources" type="file" webkitdirectory directory multiple hidden>
+      <label class="button" for="levels">Import custom levels</label>
+      <input id="levels" type="file" accept=".dat,.gmd,.txt,.xml,application/xml,text/plain" multiple hidden>
+      <button class="button" id="fullscreen" type="button">Fullscreen</button>
+    </div>
+  </header>
+  <main>
+    <section class="game-frame" aria-label="OpenGD game">
+      <iframe id="game" title="nogGD game" src="/game/OpenGD.html" allow="fullscreen; autoplay" allowfullscreen></iframe>
+      <div class="welcome" id="welcome">
+        <div class="welcome-card">
+          <div class="eyebrow">Browser edition</div>
+          <h1>Bring your game files.<br><span>Keep them on your device.</span></h1>
+          <p>Choose the <b>Resources</b> folder inside your Geometry Dash install to start. Import your <b>CCLocalLevels.dat</b> to bring in your own creations.</p>
+          <button class="button primary large" id="start">Choose Resources folder</button>
+          <div class="privacy"><span class="privacy-dot"></span> Selected files stay in this browser and are saved on this device.</div>
+        </div>
+      </div>
+    </section>
+    <footer class="statusbar">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status">Loading browser game…</span>
+      <span class="status-note">Built on OpenGD Remastered · Browser saves stay on this device</span>
+    </footer>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
