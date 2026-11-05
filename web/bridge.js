@@ -207,8 +207,7 @@
       }
       await syncFs();
       Module.ccall('opengd_web_resources_ready', null, [], []);
-      postStatus('Resources loaded. Starting game…', 'ready', {gameReady: true});
-    } finally {
+      postStatus('Resources loaded. Starting game…', 'ready', {gameReady: true});    } finally {
       localImportInProgress = false;
     }
   }
@@ -252,23 +251,17 @@
     return entries;
   }
 
-  // Inflate deflate entries async using DecompressionStream
+  // Inflate deflate entries async using DecompressionStream('deflate-raw')
+  // ZIP method 8 is raw deflate — directly supported without any wrapper
   async function inflateEntries(entries) {
     for (const e of entries) {
       if (e.isDir || !e.data || !e.data.deflate) continue;
       try {
-        // Raw deflate needs a 2-byte zlib header stripped by wrapping as gzip
         const raw = e.data.deflate;
-        // Minimal gzip wrapper: header(10) + raw deflate + crc32(4) + size(4)
-        const gzip = new Uint8Array(10 + raw.length + 8);
-        gzip[0]=0x1f; gzip[1]=0x8b; gzip[2]=8; gzip[3]=0;
-        gzip[4]=gzip[5]=gzip[6]=gzip[7]=0; gzip[8]=0; gzip[9]=0xff;
-        gzip.set(raw, 10);
-        // crc32 and size at end (browser ignores them in DecompressionStream)
-        const ds = new DecompressionStream('gzip');
+        const ds = new DecompressionStream('deflate-raw');
         const writer = ds.writable.getWriter();
         const reader = ds.readable.getReader();
-        writer.write(gzip);
+        writer.write(raw);
         writer.close();
         const chunks = [];
         while (true) {
@@ -281,8 +274,9 @@
         let off = 0;
         for (const c of chunks) { out.set(c, off); off += c.length; }
         e.data = out;
-      } catch {
-        e.data = e.data.deflate; // fallback raw
+      } catch (err) {
+        console.error('[nogGD] deflate failed for', e.name, err);
+        e.data = null; // skip writing corrupt file
       }
     }
   }
@@ -320,8 +314,7 @@
       }
       await syncFs();
       Module.ccall('opengd_web_resources_ready', null, [], []);
-      postStatus('Resources loaded. Starting game…', 'ready', {gameReady: true});
-    } finally {
+      postStatus('Resources loaded. Starting game…', 'ready', {gameReady: true});    } finally {
       localImportInProgress = false;
     }
   }
