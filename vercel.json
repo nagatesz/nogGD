@@ -1,5 +1,10 @@
 {
   "outputDirectory": "public",
+  "functions": {
+    "public/api/resources.js": {
+      "runtime": "edge"
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
