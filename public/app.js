@@ -1,6 +1,6 @@
 // nogGD — auto-fetches OpenGD resources from GitHub Release on first load
 const RESOURCES_URL = '/api/resources';
-const RESOURCES_VERSION = 'resources-v2';
+const RESOURCES_VERSION = 'resources-v3';
 
 const game = document.querySelector('#game');
 const statusText = document.querySelector('#status');

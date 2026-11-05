@@ -212,41 +212,49 @@
     }
   }
 
-  // Minimal ZIP parser — handles Deflate and Stored methods, no deps
+  // ZIP parser using central directory for correct sizes (handles data-descriptor ZIPs)
   function parseZip(bytes) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const len = bytes.length;
+
+    // Find End of Central Directory record (signature 0x06054b50), search from end
+    let eocd = -1;
+    for (let i = len - 22; i >= Math.max(0, len - 65558); i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd === -1) return [];
+
+    const totalEntries = view.getUint16(eocd + 10, true);
+    let cdPos = view.getUint32(eocd + 16, true); // offset of central directory
+
     const entries = [];
-    let i = 0;
-    while (i + 4 <= bytes.length) {
-      const sig = view.getUint32(i, true);
-      if (sig !== 0x04034b50) { i++; continue; }
-      const method    = view.getUint16(i + 8, true);
-      const compSz    = view.getUint32(i + 18, true);
-      const uncompSz  = view.getUint32(i + 22, true);
-      const fnLen     = view.getUint16(i + 26, true);
-      const extraLen  = view.getUint16(i + 28, true);
-      const name      = new TextDecoder().decode(bytes.subarray(i + 30, i + 30 + fnLen));
-      const dataStart = i + 30 + fnLen + extraLen;
-      const compData  = bytes.subarray(dataStart, dataStart + compSz);
-      const isDir     = name.endsWith('/') || name.endsWith('\\');
+    for (let e = 0; e < totalEntries; e++) {
+      if (view.getUint32(cdPos, true) !== 0x02014b50) break;
+      const method     = view.getUint16(cdPos + 10, true);
+      const compSz     = view.getUint32(cdPos + 20, true);
+      const uncompSz   = view.getUint32(cdPos + 24, true);
+      const fnLen      = view.getUint16(cdPos + 28, true);
+      const extraLen   = view.getUint16(cdPos + 30, true);
+      const commentLen = view.getUint16(cdPos + 32, true);
+      const lhOffset   = view.getUint32(cdPos + 42, true);
+      const name       = new TextDecoder().decode(bytes.subarray(cdPos + 46, cdPos + 46 + fnLen));
+      cdPos += 46 + fnLen + extraLen + commentLen;
+
+      const isDir = name.endsWith('/') || name.endsWith('\\');
+      if (isDir || compSz === 0) { entries.push({name, isDir, data: null}); continue; }
+
+      // Use local header only to find data start (extra field length may differ from central dir)
+      const lfFnLen    = view.getUint16(lhOffset + 26, true);
+      const lfExtraLen = view.getUint16(lhOffset + 28, true);
+      const dataStart  = lhOffset + 30 + lfFnLen + lfExtraLen;
+      const compData   = bytes.slice(dataStart, dataStart + compSz); // .slice = copy, stays valid
+
       let data;
-      if (!isDir) {
-        if (method === 0) {
-          data = compData.slice();
-        } else if (method === 8) {
-          // Deflate — wrap in gzip envelope and use DecompressionStream sync-ish via TextDecoder trick
-          // Build a raw deflate → use pako-free approach: create a minimal ZLIB header
-          const zlib = new Uint8Array(compSz + 2);
-          zlib[0] = 0x78; zlib[1] = 0x9c;
-          zlib.set(compData, 2);
-          // Can't use DecompressionStream synchronously; store for async inflate
-          data = {deflate: compData, uncompSz};
-        } else {
-          data = compData.slice(); // unsupported method, store raw
-        }
-      }
+      if (method === 0)      data = compData;
+      else if (method === 8) data = {deflate: compData, uncompSz};
+      else                   data = compData;
+
       entries.push({name, isDir, data});
-      i = dataStart + compSz;
     }
     return entries;
   }
